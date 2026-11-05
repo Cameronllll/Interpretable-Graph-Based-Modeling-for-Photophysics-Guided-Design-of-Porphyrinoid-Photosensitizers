@@ -1,0 +1,5 @@
+# Versions verified with Python 3.13.12 in the existing project environment.
+rdkit==2025.9.6
+pandas==2.3.3
+tqdm==4.67.3
+openpyxl==3.1.5
