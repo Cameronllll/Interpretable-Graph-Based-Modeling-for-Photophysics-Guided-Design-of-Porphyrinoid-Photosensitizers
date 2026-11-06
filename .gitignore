@@ -1,0 +1,70 @@
+
+# ==================================================
+# Python cache and temporary files
+# ==================================================
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ==================================================
+# Trained models and intermediate artifacts
+# ==================================================
+*.ckpt
+*.pt
+*.pth
+*.joblib
+*.pkl
+*.npz
+
+# Keep the published Q-band initialization checkpoint
+!qband_prediction/initialization_models/mean_qband_seed42.ckpt
+
+# ==================================================
+# Training and analysis outputs
+# ==================================================
+results/
+checkpoints/
+logs/
+outputs/
+ml_results/
+dmpnn_ecfp_results/
+dmpnn_ecfp_ml_results/
+shap_dmpnn_ecfp_ml_results/
+qband_explain_results/
+prediction_backups/
+synthesizability/
+
+# ==================================================
+# Original molecular structures
+# ==================================================
+*.sdf
+
+# Private molecular generation inputs
+/mol_generation/data/*
+!/mol_generation/data/README.md
+
+# ==================================================
+# Locally generated candidate tables
+# ==================================================
+/candidate.csv
+/candidate_predictions.csv
+/representatives.xlsx
+
+# Temporary logs and backup files
+*.log
+*.tmp
+*.bak
