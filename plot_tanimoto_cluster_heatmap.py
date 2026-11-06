@@ -59,7 +59,7 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 DEDUP_LEVEL = "organic"
 
 # 主去冗余阈值
-SIMILARITY_THRESHOLD = 0.5
+SIMILARITY_THRESHOLD = 0.6
 
 # 不同阈值敏感性分析
 THRESHOLD_LIST = [0.60, 0.70, 0.80, 0.85, 0.90, 0.95]
