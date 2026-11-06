@@ -1,20 +1,30 @@
-"""Copy ranked SDF files from a screening CSV and write a copy manifest."""
+"""
+Collect top-ranked SDF files listed in a CSV file.
+
+Default input/output paths are configured for this project:
+  CSV:     D:\\Mol_Prodiction\\synthesizability\\smiles_synth_eval_result\\figures\\top_200_by_synthetic_score.csv
+  SDF dir: D:\\Mol_Prodiction\\candidate\\SDF
+  Out dir: D:\\Mol_Prodiction\\candidate\\Top_SDF
+
+The script reads the first N rows in the CSV, resolves the corresponding SDF
+file from the `sdf_file` column first and then from `mol_id`, and copies each
+selected SDF file into the output directory.
+"""
 
 from __future__ import annotations
 
 import argparse
 import csv
-from itertools import islice
 import re
 import shutil
 import sys
-from pathlib import Path, PureWindowsPath
+from pathlib import Path
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent
-DEFAULT_CSV = PROJECT_ROOT / "outputs" / "figures" / "top_200_by_synthetic_score.csv"
-DEFAULT_SDF_DIR = PROJECT_ROOT / "data" / "sdf"
-DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "outputs" / "selected_sdf"
+PROJECT_ROOT = Path(r"D:\Mol_Prodiction")
+DEFAULT_CSV = PROJECT_ROOT / "synthesizability" / "smiles_synth_eval_result" / "figures" / "top_200_by_synthetic_score.csv"
+DEFAULT_SDF_DIR = PROJECT_ROOT / "candidate" / "SDF"
+DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "candidate" / "Top_SDF"
 
 
 INVALID_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]+')
@@ -25,21 +35,9 @@ def parse_args() -> argparse.Namespace:
         description="Copy the top N SDF molecules listed in a CSV into one directory."
     )
     parser.add_argument("--csv", type=Path, default=DEFAULT_CSV, help="Input CSV path.")
-    parser.add_argument(
-        "--sdf-dir",
-        type=Path,
-        default=DEFAULT_SDF_DIR,
-        help="Directory containing SDF files.",
-    )
-    parser.add_argument(
-        "--out-dir",
-        type=Path,
-        default=DEFAULT_OUTPUT_DIR,
-        help="Output directory for selected SDF files.",
-    )
-    parser.add_argument(
-        "--top-n", type=int, default=100, help="Number of top CSV rows to copy."
-    )
+    parser.add_argument("--sdf-dir", type=Path, default=DEFAULT_SDF_DIR, help="Directory containing SDF files.")
+    parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUTPUT_DIR, help="Output directory for selected SDF files.")
+    parser.add_argument("--top-n", type=int, default=100, help="Number of top CSV rows to copy.")
     parser.add_argument(
         "--prefix-rank",
         action="store_true",
@@ -61,14 +59,12 @@ def read_top_rows(csv_path: Path, top_n: int) -> list[dict[str, str]]:
 
     with csv_path.open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
-        rows = list(islice(reader, top_n))
+        rows = list(reader)
 
     if not rows:
         raise ValueError(f"CSV file is empty: {csv_path}")
     if "mol_id" not in rows[0] and "sdf_file" not in rows[0]:
-        raise ValueError(
-            "CSV must contain at least one of these columns: mol_id, sdf_file"
-        )
+        raise ValueError("CSV must contain at least one of these columns: mol_id, sdf_file")
 
     return rows[:top_n]
 
@@ -79,19 +75,13 @@ def build_sdf_index(sdf_dir: Path) -> tuple[dict[str, Path], dict[str, Path]]:
 
     by_name: dict[str, Path] = {}
     by_stem: dict[str, Path] = {}
-    for sdf_path in sorted(sdf_dir.iterdir()):
-        if not sdf_path.is_file() or sdf_path.suffix.lower() != ".sdf":
-            continue
-        if sdf_path.name.lower() in by_name:
-            raise ValueError(f"Ambiguous case-insensitive SDF name: {sdf_path.name}")
+    for sdf_path in sdf_dir.glob("*.sdf"):
         by_name.setdefault(sdf_path.name.lower(), sdf_path)
         by_stem.setdefault(sdf_path.stem.lower(), sdf_path)
     return by_name, by_stem
 
 
-def resolve_sdf_path(
-    row: dict[str, str], by_name: dict[str, Path], by_stem: dict[str, Path]
-) -> Path | None:
+def resolve_sdf_path(row: dict[str, str], by_name: dict[str, Path], by_stem: dict[str, Path]) -> Path | None:
     candidates: list[str] = []
 
     sdf_file = str(row.get("sdf_file", "")).strip()
@@ -106,10 +96,10 @@ def resolve_sdf_path(
         candidates.append(mol_id)
 
     for candidate in candidates:
-        key = PureWindowsPath(candidate).name.lower()
+        key = Path(candidate).name.lower()
         if key in by_name:
             return by_name[key]
-        stem = PureWindowsPath(candidate).stem.lower()
+        stem = Path(candidate).stem.lower()
         if stem in by_stem:
             return by_stem[stem]
 
@@ -159,9 +149,7 @@ def main() -> int:
             continue
 
         output_stem_base = safe_stem(sdf_path.stem, f"molecule_{rank:03d}")
-        output_stem = (
-            f"{rank:03d}_{output_stem_base}" if args.prefix_rank else output_stem_base
-        )
+        output_stem = f"{rank:03d}_{output_stem_base}" if args.prefix_rank else output_stem_base
         output_sdf_path = args.out_dir / f"{output_stem}.sdf"
 
         if args.no_overwrite and output_sdf_path.exists():
@@ -185,9 +173,7 @@ def main() -> int:
                 "mol_id": mol_id,
                 "sdf_file": sdf_path.name,
                 "status": status,
-                "output_sdf_file": output_sdf_path.name
-                if output_sdf_path.exists() or status == "copied"
-                else "",
+                "output_sdf_file": output_sdf_path.name if output_sdf_path.exists() or status == "copied" else "",
                 "message": message,
             }
         )

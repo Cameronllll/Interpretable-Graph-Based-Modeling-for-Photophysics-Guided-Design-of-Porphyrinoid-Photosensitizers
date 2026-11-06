@@ -17,11 +17,13 @@ from rdkit import Chem, RDLogger
 from rdkit.Chem import Crippen, Descriptors, rdMolDescriptors
 
 
+RDLogger.DisableLog("rdApp.*")
+
 PROJECT_DIR = Path(__file__).resolve().parent
 
-DEFAULT_INPUT_CSV = PROJECT_DIR / "outputs" / "candidate_predictions.csv"
-DEFAULT_SDF_DIR = PROJECT_DIR / "data" / "sdf"
-DEFAULT_OUTPUT_DIR = PROJECT_DIR / "outputs" / "synthesizability"
+DEFAULT_INPUT_CSV = PROJECT_DIR / "candidate_predictions.csv"
+DEFAULT_SDF_DIR = PROJECT_DIR / "candidate" / "SDF(mol_prediction)"
+DEFAULT_OUTPUT_DIR = Path("synthesizability") / "smiles_synth_eval_result"
 
 REPORT_CSV_NAME = "synth_eval_report.csv"
 INVALID_CSV_NAME = "invalid_molecules_report.csv"
@@ -70,75 +72,14 @@ INVALID_OUTPUT_COLUMNS = [
 
 
 METAL_SYMBOLS = {
-    "Li",
-    "Be",
-    "Na",
-    "Mg",
-    "Al",
-    "K",
-    "Ca",
-    "Sc",
-    "Ti",
-    "V",
-    "Cr",
-    "Mn",
-    "Fe",
-    "Co",
-    "Ni",
-    "Cu",
-    "Zn",
-    "Ga",
-    "Rb",
-    "Sr",
-    "Y",
-    "Zr",
-    "Nb",
-    "Mo",
-    "Tc",
-    "Ru",
-    "Rh",
-    "Pd",
-    "Ag",
-    "Cd",
-    "In",
-    "Sn",
-    "Cs",
-    "Ba",
-    "La",
-    "Ce",
-    "Pr",
-    "Nd",
-    "Pm",
-    "Sm",
-    "Eu",
-    "Gd",
-    "Tb",
-    "Dy",
-    "Ho",
-    "Er",
-    "Tm",
-    "Yb",
-    "Lu",
-    "Hf",
-    "Ta",
-    "W",
-    "Re",
-    "Os",
-    "Ir",
-    "Pt",
-    "Au",
-    "Hg",
-    "Tl",
-    "Pb",
-    "Bi",
-    "Fr",
-    "Ra",
-    "Ac",
-    "Th",
-    "Pa",
-    "U",
-    "Np",
-    "Pu",
+    "Li", "Be", "Na", "Mg", "Al",
+    "K", "Ca", "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn", "Ga",
+    "Rb", "Sr", "Y", "Zr", "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In", "Sn",
+    "Cs", "Ba",
+    "La", "Ce", "Pr", "Nd", "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb", "Lu",
+    "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg", "Tl", "Pb", "Bi",
+    "Fr", "Ra",
+    "Ac", "Th", "Pa", "U", "Np", "Pu",
 }
 
 PTABLE = Chem.GetPeriodicTable()
@@ -162,23 +103,11 @@ def load_sa_scorer():
     possible_dirs = []
     conda_prefix = os.environ.get("CONDA_PREFIX", "")
     if conda_prefix:
-        possible_dirs.extend(
-            [
-                Path(conda_prefix)
-                / "Lib"
-                / "site-packages"
-                / "rdkit"
-                / "Contrib"
-                / "SA_Score",
-                Path(conda_prefix) / "share" / "RDKit" / "Contrib" / "SA_Score",
-                Path(conda_prefix)
-                / "Library"
-                / "share"
-                / "RDKit"
-                / "Contrib"
-                / "SA_Score",
-            ]
-        )
+        possible_dirs.extend([
+            Path(conda_prefix) / "Lib" / "site-packages" / "rdkit" / "Contrib" / "SA_Score",
+            Path(conda_prefix) / "share" / "RDKit" / "Contrib" / "SA_Score",
+            Path(conda_prefix) / "Library" / "share" / "RDKit" / "Contrib" / "SA_Score",
+        ])
 
     for path in possible_dirs:
         if (path / "sascorer.py").exists():
@@ -202,7 +131,7 @@ def clip01(x):
         x = float(x)
     except Exception:
         return None
-    if not math.isfinite(x):
+    if math.isnan(x):
         return None
     return max(0.0, min(1.0, x))
 
@@ -315,9 +244,7 @@ def get_largest_organic_core_mol(mol):
 
         rebuilt = Chem.MolFromSmiles(organic_smiles, sanitize=True)
         if rebuilt is not None:
-            strict_smiles = Chem.MolToSmiles(
-                rebuilt, canonical=True, isomericSmiles=True
-            )
+            strict_smiles = Chem.MolToSmiles(rebuilt, canonical=True, isomericSmiles=True)
             return rebuilt, strict_smiles, ""
 
         return largest, organic_smiles, "organic_smiles_rebuild_failed"
@@ -373,12 +300,7 @@ def calculate_sa_score_with_fallback(mol):
         note_items = [standard_error]
         if fallback_note:
             note_items.append(fallback_note)
-        return (
-            fallback_sa,
-            "fallback_sa_score",
-            "fallback_approximation",
-            "; ".join(note_items),
-        )
+        return fallback_sa, "fallback_sa_score", "fallback_approximation", "; ".join(note_items)
 
     note_items = [standard_error]
     if fallback_note:
@@ -406,7 +328,8 @@ REACTIVE_SMARTS = {
 }
 
 REACTIVE_PATTERNS = {
-    name: Chem.MolFromSmarts(smarts) for name, smarts in REACTIVE_SMARTS.items()
+    name: Chem.MolFromSmarts(smarts)
+    for name, smarts in REACTIVE_SMARTS.items()
 }
 
 
@@ -416,9 +339,7 @@ def calculate_descriptors(mol):
 
     try:
         formal_charge = sum(atom.GetFormalCharge() for atom in mol.GetAtoms())
-        hetero_atoms = sum(
-            1 for atom in mol.GetAtoms() if atom.GetAtomicNum() not in {1, 6}
-        )
+        hetero_atoms = sum(1 for atom in mol.GetAtoms() if atom.GetAtomicNum() not in {1, 6})
 
         return {
             "mol_wt": Descriptors.MolWt(mol),
@@ -445,13 +366,9 @@ def calculate_substitution_complexity_score(mol):
         mw = desc.get("mol_wt", Descriptors.MolWt(mol))
         rotors = desc.get("rotatable_bonds", Descriptors.NumRotatableBonds(mol))
         rings = desc.get("rings", rdMolDescriptors.CalcNumRings(mol))
-        aromatic_rings = desc.get(
-            "aromatic_rings", rdMolDescriptors.CalcNumAromaticRings(mol)
-        )
+        aromatic_rings = desc.get("aromatic_rings", rdMolDescriptors.CalcNumAromaticRings(mol))
         spiro = desc.get("spiro_atoms", rdMolDescriptors.CalcNumSpiroAtoms(mol))
-        bridge = desc.get(
-            "bridgehead_atoms", rdMolDescriptors.CalcNumBridgeheadAtoms(mol)
-        )
+        bridge = desc.get("bridgehead_atoms", rdMolDescriptors.CalcNumBridgeheadAtoms(mol))
         logp = desc.get("logp", Crippen.MolLogP(mol))
         formal_charge = desc.get("formal_charge", 0)
 
@@ -540,9 +457,7 @@ def evaluate_sdf_file(sdf_path):
     if mol.GetNumAtoms() == 0:
         return empty_result("invalid", sdf_path, "zero_atoms")
     if mol.GetNumHeavyAtoms() < MIN_HEAVY_ATOMS:
-        return empty_result(
-            "invalid", sdf_path, f"too_few_heavy_atoms:{mol.GetNumHeavyAtoms()}"
-        )
+        return empty_result("invalid", sdf_path, f"too_few_heavy_atoms:{mol.GetNumHeavyAtoms()}")
     if has_dummy_atoms(mol):
         return empty_result("invalid", sdf_path, "contains_dummy_atoms")
 
@@ -550,9 +465,7 @@ def evaluate_sdf_file(sdf_path):
     if not ok_cache:
         notes.append(cache_msg)
 
-    full_scoring_mol, canonical_full_smiles, full_note = (
-        make_standard_scoring_mol_from_mol(mol)
-    )
+    full_scoring_mol, canonical_full_smiles, full_note = make_standard_scoring_mol_from_mol(mol)
     if full_note:
         notes.append(f"full_smiles_note: {full_note}")
 
@@ -561,13 +474,8 @@ def evaluate_sdf_file(sdf_path):
 
     organic_core_note = ""
     if metals:
-        organic_core, organic_smiles, organic_core_note = get_largest_organic_core_mol(
-            mol
-        )
-        if (
-            organic_core is not None
-            and organic_core.GetNumHeavyAtoms() >= MIN_HEAVY_ATOMS
-        ):
+        organic_core, organic_smiles, organic_core_note = get_largest_organic_core_mol(mol)
+        if organic_core is not None and organic_core.GetNumHeavyAtoms() >= MIN_HEAVY_ATOMS:
             scoring_mol = organic_core
             scoring_smiles = organic_smiles
             sa_input_type = "sdf_organic_smiles"
@@ -579,12 +487,8 @@ def evaluate_sdf_file(sdf_path):
             if organic_core_note:
                 notes.append(f"organic_core_note: {organic_core_note}")
         else:
-            fail_note = "; ".join(
-                notes + ([organic_core_note] if organic_core_note else [])
-            )
-            return empty_result(
-                "invalid", sdf_path, fail_note or "no_valid_scoring_mol"
-            )
+            fail_note = "; ".join(notes + ([organic_core_note] if organic_core_note else []))
+            return empty_result("invalid", sdf_path, fail_note or "no_valid_scoring_mol")
     else:
         organic_smiles = canonical_full_smiles
         scoring_mol = full_scoring_mol
@@ -594,13 +498,9 @@ def evaluate_sdf_file(sdf_path):
     if scoring_mol is None or not scoring_smiles:
         return empty_result("invalid", sdf_path, "empty_scoring_smiles")
 
-    sa_score, sa_method, sa_source, sa_note = calculate_sa_score_with_fallback(
-        scoring_mol
-    )
+    sa_score, sa_method, sa_source, sa_note = calculate_sa_score_with_fallback(scoring_mol)
     sa_01 = sa_score_to_01(sa_score)
-    substitution_score, reactive_note = calculate_substitution_complexity_score(
-        scoring_mol
-    )
+    substitution_score, reactive_note = calculate_substitution_complexity_score(scoring_mol)
     synthetic_score = calculate_final_synthetic_score(sa_01, substitution_score)
 
     if synthetic_score is None:
@@ -649,11 +549,6 @@ def load_prediction_rows(input_csv):
 
     with open(path, "r", newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
-        columns = reader.fieldnames or []
-        if not {"sdf_file", "mol_id"}.intersection(columns):
-            raise ValueError("Prediction CSV requires sdf_file or mol_id")
-        if len(columns) != len(set(columns)):
-            raise ValueError("Prediction CSV contains duplicate column names")
         rows = list(reader)
 
     by_sdf_file = {}
@@ -664,8 +559,6 @@ def load_prediction_rows(input_csv):
             if mol_id:
                 sdf_file = f"{mol_id}.sdf"
         if sdf_file:
-            if sdf_file in by_sdf_file:
-                raise ValueError(f"Duplicate SDF key in prediction CSV: {sdf_file}")
             by_sdf_file[sdf_file] = row
 
     return by_sdf_file, len(rows)
@@ -675,14 +568,7 @@ def merge_prediction_columns(result_row, prediction_row):
     if not prediction_row:
         return result_row
 
-    for col in [
-        "mol_id",
-        "sdf_file",
-        "smiles",
-        "pred_log_kisc",
-        "pred_kisc",
-        "pred_q_band",
-    ]:
+    for col in ["mol_id", "sdf_file", "smiles", "pred_log_kisc", "pred_kisc", "pred_q_band"]:
         value = prediction_row.get(col, "")
         if value != "":
             result_row[col] = value
@@ -707,8 +593,7 @@ def add_ranks(rows):
         rows[idx]["synth_rank"] = rank
 
 
-def main(argv=None):
-    RDLogger.DisableLog("rdApp.*")
+def main():
     parser = argparse.ArgumentParser(
         description="Evaluate synthesizability from SDF files and merge prediction CSV columns."
     )
@@ -730,7 +615,7 @@ def main(argv=None):
         default=str(DEFAULT_OUTPUT_DIR),
         help="Output directory.",
     )
-    args = parser.parse_args(argv)
+    args = parser.parse_args()
 
     input_csv = Path(args.input)
     sdf_dir = Path(args.sdf_dir)
@@ -757,9 +642,7 @@ def main(argv=None):
     print(f"Prediction row count: {prediction_count}")
     print(f"Output directory: {output_dir}")
     print(f"Standard SA Score source: {STANDARD_SA_SOURCE}")
-    print(
-        f"Final formula: {SA_WEIGHT:.2f} * sa_score_01 + {SUBSTITUTION_WEIGHT:.2f} * substitution_score"
-    )
+    print(f"Final formula: {SA_WEIGHT:.2f} * sa_score_01 + {SUBSTITUTION_WEIGHT:.2f} * substitution_score")
     print("=" * 100)
 
     report_rows = []
@@ -808,9 +691,7 @@ def main(argv=None):
             invalid_rows.append(out_row)
 
         if idx % 500 == 0 or idx == len(sdf_files):
-            print(
-                f"Processed {idx}/{len(sdf_files)} SDF files | valid={valid_count} | invalid={invalid_count}"
-            )
+            print(f"Processed {idx}/{len(sdf_files)} SDF files | valid={valid_count} | invalid={invalid_count}")
 
     add_ranks(report_rows)
 
@@ -820,9 +701,7 @@ def main(argv=None):
         writer.writerows(report_rows)
 
     with open(invalid_csv, "w", newline="", encoding="utf-8-sig") as f:
-        writer = csv.DictWriter(
-            f, fieldnames=INVALID_OUTPUT_COLUMNS, extrasaction="ignore"
-        )
+        writer = csv.DictWriter(f, fieldnames=INVALID_OUTPUT_COLUMNS, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(invalid_rows)
 
@@ -846,9 +725,7 @@ def main(argv=None):
 
     if SASCORER is None:
         print("\nWarning: standard RDKit SA Score was not loaded.")
-        print(
-            "Scorable molecules used fallback_sa_score and are marked in sa_score_method."
-        )
+        print("Scorable molecules used fallback_sa_score and are marked in sa_score_method.")
 
 
 if __name__ == "__main__":

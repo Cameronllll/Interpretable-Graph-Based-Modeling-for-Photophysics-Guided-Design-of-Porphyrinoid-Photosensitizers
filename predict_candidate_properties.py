@@ -1,10 +1,4 @@
 # -*- coding: utf-8 -*-
-"""Predict log10(kISC) and Q band with isolated model workers.
-
-Input rows, molecular identity checks, feature order, and model hash checks
-are preserved. Default models are located relative to this project root.
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -13,7 +7,7 @@ import hashlib
 import json
 import math
 import os
-from pathlib import Path, PureWindowsPath
+from pathlib import Path
 import subprocess
 import sys
 import tempfile
@@ -21,44 +15,28 @@ from datetime import datetime, timezone
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
-DEFAULT_INPUT = PROJECT_DIR / "data" / "candidate.csv"
-DEFAULT_OUTPUT = PROJECT_DIR / "outputs" / "candidate_predictions.csv"
+DEFAULT_INPUT = PROJECT_DIR / "candidate.csv"
+DEFAULT_OUTPUT = PROJECT_DIR / "candidate_predictions.csv"
 DEFAULT_KISC_CHECKPOINT = (
-    PROJECT_DIR
-    / "Kisc_prediction"
-    / "dmpnn_ecfp_ml_results"
+    PROJECT_DIR / "Kisc_prediction" / "dmpnn_ecfp_ml_results"
     / "20261103_110718_115077"
     / "best_model.ckpt"
 )
 DEFAULT_KISC_MODEL = DEFAULT_KISC_CHECKPOINT
 DEFAULT_QBAND_MODEL = (
-    PROJECT_DIR
-    / "qband_prediction"
-    / "results"
-    / "20261104_103722"
+    PROJECT_DIR / "qband_prediction" / "results" / "20261104_103722"
     / "best_model.ckpt"
 )
 RESULT_COLUMNS = [
-    "model_smiles",
-    "removed_h_count",
-    "preprocessing_status",
-    "preprocessing_error",
-    "pred_log_kisc",
-    "pred_kisc",
-    "pred_q_band",
+    "model_smiles", "removed_h_count", "preprocessing_status", "preprocessing_error",
+    "pred_log_kisc", "pred_kisc", "pred_q_band",
     "qband_outside_training_range",
-    "kisc_prediction_status",
-    "qband_prediction_status",
-    "qband_descriptor_valid",
-    "prediction_status",
-    "prediction_error",
+    "kisc_prediction_status", "qband_prediction_status",
+    "qband_descriptor_valid", "prediction_status", "prediction_error",
 ]
 PREPROCESSING_VERSION = "implicit_h_checked_v1"
 PREPROCESSING_COLUMNS = (
-    "model_smiles",
-    "removed_h_count",
-    "preprocessing_status",
-    "preprocessing_error",
+    "model_smiles", "removed_h_count", "preprocessing_status", "preprocessing_error",
 )
 
 
@@ -67,15 +45,10 @@ def parse_args(argv=None):
     parser.add_argument("--input", type=Path, default=DEFAULT_INPUT)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument(
-        "--kisc-model",
-        type=Path,
-        default=DEFAULT_KISC_MODEL,
+        "--kisc-model", type=Path, default=DEFAULT_KISC_MODEL,
         help="kISC 的 best_model.ckpt，使用同目录配套 best_ml_model.joblib；也可指定 joblib 或模型目录。",
     )
-    parser.add_argument(
-        "--qband-model", type=Path, default=DEFAULT_QBAND_MODEL,
-        help="Q band 的 best_model.ckpt 或所在目录。",
-    )
+    parser.add_argument("--qband-model", type=Path, default=DEFAULT_QBAND_MODEL)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     parser.add_argument("--_worker", choices=("kisc", "qband"), help=argparse.SUPPRESS)
@@ -87,15 +60,11 @@ def parse_args(argv=None):
     if args.kisc_model.is_dir():
         args.kisc_model = args.kisc_model / "best_ml_model.joblib"
     if args.kisc_model.suffix.lower() not in {".ckpt", ".joblib"}:
-        parser.error(
-            "--kisc-model must be a .joblib, a paired .ckpt, or the model directory"
-        )
+        parser.error("--kisc-model must be a .joblib, a paired .ckpt, or the model directory")
     if args.qband_model.is_dir():
         checkpoints = sorted(args.qband_model.glob("best_model*.ckpt"))
         if len(checkpoints) != 1:
-            parser.error(
-                "--qband-model directory must contain exactly one best_model*.ckpt"
-            )
+            parser.error("--qband-model directory must contain exactly one best_model*.ckpt")
         args.qband_model = checkpoints[0]
     if args.qband_model.suffix.lower() != ".ckpt":
         parser.error("--qband-model must be a .ckpt or its directory")
@@ -180,16 +149,12 @@ def normalize_smiles_for_model(smiles, parse_molecule):
         return value, 0
 
     identity = molecular_identity(original)
-
     # Some aromatic macrocycles lose E/Z information in aromatic SMILES output.
     # Accept an aromatic or Kekule representation only after the identity check.
     def checked_smiles(mol):
         for kekule in (False, True):
             model_smiles = Chem.MolToSmiles(
-                Chem.Mol(mol),
-                canonical=True,
-                isomericSmiles=True,
-                kekuleSmiles=kekule,
+                Chem.Mol(mol), canonical=True, isomericSmiles=True, kekuleSmiles=kekule,
             )
             rebuilt = parse_molecule(model_smiles)
             if rebuilt is not None and molecular_identity(rebuilt) == identity:
@@ -201,7 +166,6 @@ def normalize_smiles_for_model(smiles, parse_molecule):
         return model_smiles, removed_count
     # For some metal macrocycles H removal after sanitization loses stereo.
     # Let the SMILES parser remove H during parsing instead, and still require
-    # exact identity after re-parsing with the MODEL'S original relaxed parser.
     alternative = Chem.MolFromSmiles(value)
     if alternative is not None:
         model_smiles = checked_smiles(alternative)
@@ -223,12 +187,8 @@ def load_qband_training_range(checkpoint_path):
     if not labels or not all(math.isfinite(value) for value in labels):
         raise ValueError(f"Invalid training labels in {path}")
     return {
-        "min": min(labels),
-        "max": max(labels),
-        "unit": "nm",
-        "rows": len(labels),
-        "source": str(path),
-        "source_sha256": sha256_file(path),
+        "min": min(labels), "max": max(labels), "unit": "nm", "rows": len(labels),
+        "source": str(path), "source_sha256": sha256_file(path),
     }
 
 
@@ -240,10 +200,6 @@ def outside_training_range(value, bounds):
 
 def load_predictor(args):
     """Called only in a fresh worker process; imports belong to one model."""
-    model_dir = PROJECT_DIR / (
-        "Kisc_prediction" if args._worker == "kisc" else "qband_prediction"
-    )
-    sys.path.insert(0, str(model_dir))
     import numpy as np
     import torch
     from rdkit import RDLogger
@@ -254,62 +210,41 @@ def load_predictor(args):
     if args.device == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("CUDA was requested but is unavailable")
     device = torch.device(
-        "cuda"
-        if args.device == "auto" and torch.cuda.is_available()
-        else "cpu"
-        if args.device == "auto"
-        else args.device
+        "cuda" if args.device == "auto" and torch.cuda.is_available()
+        else "cpu" if args.device == "auto" else args.device
     )
 
     if args._worker == "kisc":
-        import prediction as hybrid
+        from Kisc_prediction import prediction as hybrid
 
         torch.set_float32_matmul_precision("highest")
         checkpoint_supplied = args.kisc_model.suffix.lower() == ".ckpt"
         model_path = hybrid.resolve_model_path(
-            args.kisc_model.with_name("best_ml_model.joblib")
-            if checkpoint_supplied
-            else args.kisc_model
+            args.kisc_model.with_name("best_ml_model.joblib") if checkpoint_supplied else args.kisc_model
         )
         payload = hybrid.load_model_payload(model_path)
         # Prefer the archived checkpoint beside the final model, and retain
         # the payload's SHA-256 check when resolving relocated model files.
         saved_checkpoint = Path(str(payload.get("checkpoint_path", "")))
-        requested_checkpoint = (
-            args.kisc_model
-            if checkpoint_supplied
-            else model_path.parent / PureWindowsPath(str(saved_checkpoint)).name
-        )
+        requested_checkpoint = args.kisc_model if checkpoint_supplied else model_path.parent / saved_checkpoint.name
         checkpoint = hybrid.resolve_checkpoint(
-            model_path,
-            {**payload, "checkpoint_path": str(requested_checkpoint)},
+            model_path, {**payload, "checkpoint_path": str(requested_checkpoint)},
         )
         if checkpoint_supplied and checkpoint != requested_checkpoint.resolve():
-            raise ValueError(
-                "The supplied kISC checkpoint does not match the paired joblib checkpoint hash"
-            )
+            raise ValueError("The supplied kISC checkpoint does not match the paired joblib checkpoint hash")
         fingerprint = payload["fingerprint_params"]
-        selected_bits = np.asarray(
-            payload.get("selected_ecfp_bit_indices", []), dtype=np.int64
-        )
+        selected_bits = np.asarray(payload.get("selected_ecfp_bit_indices", []), dtype=np.int64)
         if (
             selected_bits.shape != (int(payload["ecfp_dimension"]),)
             or len(np.unique(selected_bits)) != len(selected_bits)
             or np.any(selected_bits < 0)
             or np.any(selected_bits >= int(fingerprint["n_bits"]))
         ):
-            raise ValueError(
-                "Saved ECFP bit indices do not match the fingerprint dimensions"
-            )
+            raise ValueError("Saved ECFP bit indices do not match the fingerprint dimensions")
         predictor = hybrid.HybridPredictor(payload, checkpoint, device, args.batch_size)
         estimator_dimension = getattr(predictor.estimator, "n_features_in_", None)
-        if (
-            estimator_dimension is not None
-            and int(estimator_dimension) != predictor.expected_dimension
-        ):
-            raise ValueError(
-                "kISC estimator dimension does not match the saved feature configuration"
-            )
+        if estimator_dimension is not None and int(estimator_dimension) != predictor.expected_dimension:
+            raise ValueError("kISC estimator dimension does not match the saved feature configuration")
 
         def predict(smiles):
             # The final ML regressor already outputs log_kisc in its original
@@ -325,12 +260,10 @@ def load_predictor(args):
             "selected_model": payload["selected_model"],
             "feature_dimension": predictor.expected_dimension,
             "feature_dimensions": {
-                "dmpnn": predictor.graph_dimension,
-                "ecfp": predictor.ecfp_dimension,
+                "dmpnn": predictor.graph_dimension, "ecfp": predictor.ecfp_dimension,
                 "descriptors": predictor.descriptor_dimension,
             },
-            "feature_order": ["dmpnn", "ecfp"]
-            + (["descriptors"] if predictor.use_descriptors else []),
+            "feature_order": ["dmpnn", "ecfp"] + (["descriptors"] if predictor.use_descriptors else []),
             "fingerprint_params": payload["fingerprint_params"],
             "selected_ecfp_bit_indices": predictor.selected_bits.tolist(),
             "use_descriptors": predictor.use_descriptors,
@@ -338,12 +271,10 @@ def load_predictor(args):
             "target": "log10(kISC)",
         }
     else:
-        # Match qband_prediction/train.py when reproducing the archived CUDA
-        # predictions (its evaluation uses float32 matmul precision 'high').
         torch.set_float32_matmul_precision("high")
-        from prediction import load_model, build_extra_features
-        from data import MoleculeDataset, collate_fn
-        import features
+        from qband_prediction.prediction import load_model, build_extra_features
+        from qband_prediction.data import MoleculeDataset, collate_fn
+        from qband_prediction import features
         from torch.utils.data import DataLoader
 
         checkpoint = args.qband_model
@@ -351,23 +282,16 @@ def load_predictor(args):
         features.validate_descriptor_names(scaler)
         model_params = dict(model.hparams["model_params"])
         if model_params["extra_dim"] != len(scaler["descriptor_names"]):
-            raise ValueError(
-                "Q band model input dimension does not match the saved descriptors"
-            )
+            raise ValueError("Q band model input dimension does not match the saved descriptors")
         model.to(device)
         graph_version = scaler.get("graph_feature_version", "legacy")
 
         def predict(smiles):
             extra, descriptor_valid = build_extra_features(smiles, scaler)
-            dataset = MoleculeDataset(
-                smiles, extra, graph_feature_version=graph_version
-            )
+            dataset = MoleculeDataset(smiles, extra, graph_feature_version=graph_version)
             loader = DataLoader(
-                dataset,
-                batch_size=args.batch_size,
-                shuffle=False,
-                collate_fn=collate_fn,
-                num_workers=0,
+                dataset, batch_size=args.batch_size, shuffle=False,
+                collate_fn=collate_fn, num_workers=0,
             )
             batches = []
             with torch.inference_mode():
@@ -375,8 +299,7 @@ def load_predictor(args):
                     # Existing inference method restores label mean/std once,
                     # and applies exp only if training used a log transform.
                     values = model.predict_step(
-                        (graph.to(device), descriptors.to(device)),
-                        batch_idx,
+                        (graph.to(device), descriptors.to(device)), batch_idx,
                     )
                     batches.append(values.numpy().reshape(-1))
             return np.concatenate(batches), descriptor_valid
@@ -384,11 +307,9 @@ def load_predictor(args):
         metadata = {
             "checkpoint_path": str(checkpoint),
             "checkpoint_sha256": sha256_file(checkpoint),
-            "model_type": "DMPNN",
-            "model_params": model_params,
+            "model_type": "DMPNN", "model_params": model_params,
             "descriptor_names": scaler["descriptor_names"],
-            "label_mean": scaler["label_mean"],
-            "label_std": scaler["label_std"],
+            "label_mean": scaler["label_mean"], "label_std": scaler["label_std"],
             "use_log": bool(scaler.get("use_log", False)),
             "target": "q_band (nm)",
             "graph_feature_version": graph_version,
@@ -402,19 +323,18 @@ def load_predictor(args):
 def predict_rows(rows, predict, batch_size, label):
     """Split failed batches to isolate bad rows without losing other results."""
     import numpy as np
-    from features import mol_from_smiles_relaxed
+    if label == "kisc":
+        from Kisc_prediction.features import mol_from_smiles_relaxed
+    elif label == "qband":
+        from qband_prediction.features import mol_from_smiles_relaxed
+    else:
+        raise ValueError(f"Unknown prediction model: {label}")
 
     results = [
         {
-            "row_index": i,
-            "value": None,
-            "status": "error",
-            "error": "",
-            "descriptor_valid": None,
-            "model_smiles": "",
-            "removed_h_count": None,
-            "preprocessing_status": "error",
-            "preprocessing_error": "",
+            "row_index": i, "value": None, "status": "error", "error": "",
+            "descriptor_valid": None, "model_smiles": "", "removed_h_count": None,
+            "preprocessing_status": "error", "preprocessing_error": "",
         }
         for i in range(len(rows))
     ]
@@ -423,19 +343,14 @@ def predict_rows(rows, predict, batch_size, label):
     for i, row in enumerate(rows):
         try:
             smiles[i], removed_count = normalize_smiles_for_model(
-                row.get("smiles"),
-                mol_from_smiles_relaxed,
+                row.get("smiles"), mol_from_smiles_relaxed,
             )
         except Exception as exc:
             message = f"{type(exc).__name__}: {exc}"
-            results[i].update(
-                error=f"preprocessing: {message}", preprocessing_error=message
-            )
+            results[i].update(error=f"preprocessing: {message}", preprocessing_error=message)
         else:
             results[i].update(
-                model_smiles=smiles[i],
-                removed_h_count=removed_count,
-                preprocessing_status="ok",
+                model_smiles=smiles[i], removed_h_count=removed_count, preprocessing_status="ok",
             )
             positions.append(i)
         if (i + 1) % 2000 == 0 or i + 1 == len(rows):
@@ -460,18 +375,13 @@ def predict_rows(rows, predict, batch_size, label):
                 results[i]["error"] = "Model returned a non-finite prediction"
             else:
                 results[i].update(
-                    value=float(value),
-                    status="ok",
-                    descriptor_valid=bool(valid),
+                    value=float(value), status="ok", descriptor_valid=bool(valid),
                 )
 
     for start in range(0, len(positions), batch_size):
-        run_batch(positions[start : start + batch_size])
+        run_batch(positions[start:start + batch_size])
         if start // batch_size % 8 == 0 or start + batch_size >= len(positions):
-            print(
-                f"{label}: {min(start + batch_size, len(positions))}/{len(positions)}",
-                flush=True,
-            )
+            print(f"{label}: {min(start + batch_size, len(positions))}/{len(positions)}", flush=True)
     return results
 
 
@@ -483,24 +393,18 @@ def run_worker(args):
     print(f"Loaded {args._worker} model on {metadata['device']}", flush=True)
     print(f"Checkpoint: {metadata['checkpoint_path']}", flush=True)
     if "model_path" in metadata:
-        print(
-            f"Final regressor: {metadata['model_path']} | features: {metadata['feature_dimension']}",
-            flush=True,
-        )
+        print(f"Final regressor: {metadata['model_path']} | features: {metadata['feature_dimension']}", flush=True)
     results = predict_rows(rows, predict, args.batch_size, args._worker)
     metadata["success_count"] = sum(row["status"] == "ok" for row in results)
     metadata["failure_count"] = len(results) - metadata["success_count"]
     metadata["preprocessing"] = {
-        "version": PREPROCESSING_VERSION,
-        "rdkit_version": rdBase.rdkitVersion,
+        "version": PREPROCESSING_VERSION, "rdkit_version": rdBase.rdkitVersion,
         "normalized_count": sum((row["removed_h_count"] or 0) > 0 for row in results),
         "failure_count": sum(row["preprocessing_status"] == "error" for row in results),
         "removed_h_count": sum(row["removed_h_count"] or 0 for row in results),
     }
     args.output.write_text(
-        json.dumps(
-            {"rows": results, "metadata": metadata}, ensure_ascii=False, indent=2
-        ),
+        json.dumps({"rows": results, "metadata": metadata}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 
@@ -524,24 +428,10 @@ def main(argv=None):
         for name in ("kisc", "qband"):
             worker_path = Path(temporary) / f"{name}.json"
             command = [
-                sys.executable,
-                "-B",
-                "-u",
-                str(Path(__file__).resolve()),
-                "--_worker",
-                name,
-                "--input",
-                str(args.input),
-                "--output",
-                str(worker_path),
-                "--kisc-model",
-                str(args.kisc_model),
-                "--qband-model",
-                str(args.qband_model),
-                "--batch-size",
-                str(args.batch_size),
-                "--device",
-                args.device,
+                sys.executable, "-B", "-u", str(Path(__file__).resolve()),
+                "--_worker", name, "--input", str(args.input), "--output", str(worker_path),
+                "--kisc-model", str(args.kisc_model), "--qband-model", str(args.qband_model),
+                "--batch-size", str(args.batch_size), "--device", args.device,
             ]
             subprocess.run(command, check=True)
             outputs[name] = json.loads(worker_path.read_text(encoding="utf-8"))
@@ -553,39 +443,30 @@ def main(argv=None):
         if kisc["row_index"] != i or qband["row_index"] != i:
             raise RuntimeError("Worker output row order changed")
         if any(kisc[name] != qband[name] for name in PREPROCESSING_COLUMNS):
-            raise RuntimeError(
-                f"Models received different preprocessed structures at row {i + 1}"
-            )
+            raise RuntimeError(f"Models received different preprocessed structures at row {i + 1}")
         log_kisc = kisc["value"]
-        errors = [
-            f"{name}: {result['error']}"
-            for name, result in (("kisc", kisc), ("qband", qband))
-            if result["error"]
-        ]
+        errors = [f"{name}: {result['error']}" for name, result in
+                  (("kisc", kisc), ("qband", qband)) if result["error"]]
         linear_kisc = ""
         if log_kisc is not None:
             try:
-                linear_kisc = 10.0**log_kisc
+                linear_kisc = 10.0 ** log_kisc
             except OverflowError:
                 errors.append("pred_kisc: 10 ** pred_log_kisc overflowed")
         succeeded = sum(result["status"] == "ok" for result in (kisc, qband))
         row.update({name: kisc[name] for name in PREPROCESSING_COLUMNS})
-        row.update(
-            {
-                "pred_log_kisc": log_kisc,
-                "pred_kisc": linear_kisc,
-                "pred_q_band": qband["value"],
-                "qband_outside_training_range": outside_training_range(
-                    qband["value"],
-                    outputs["qband"]["metadata"]["training_label_range"],
-                ),
-                "kisc_prediction_status": kisc["status"],
-                "qband_prediction_status": qband["status"],
-                "qband_descriptor_valid": qband["descriptor_valid"],
-                "prediction_status": {2: "ok", 1: "partial", 0: "error"}[succeeded],
-                "prediction_error": "; ".join(errors),
-            }
-        )
+        row.update({
+            "pred_log_kisc": log_kisc, "pred_kisc": linear_kisc,
+            "pred_q_band": qband["value"],
+            "qband_outside_training_range": outside_training_range(
+                qband["value"], outputs["qband"]["metadata"]["training_label_range"],
+            ),
+            "kisc_prediction_status": kisc["status"],
+            "qband_prediction_status": qband["status"],
+            "qband_descriptor_valid": qband["descriptor_valid"],
+            "prediction_status": {2: "ok", 1: "partial", 0: "error"}[succeeded],
+            "prediction_error": "; ".join(errors),
+        })
     columns = columns + [name for name in RESULT_COLUMNS if name not in columns]
     with args.output.open("w", encoding="utf-8-sig", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=columns)
@@ -593,24 +474,17 @@ def main(argv=None):
         writer.writerows(rows)
     metadata = {
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "input": str(args.input),
-        "input_sha256": sha256_file(args.input),
-        "output": str(args.output),
-        "rows": len(rows),
-        "batch_size": args.batch_size,
-        "kisc": outputs["kisc"]["metadata"],
-        "qband": outputs["qband"]["metadata"],
-        "status_counts": {
-            status: sum(row["prediction_status"] == status for row in rows)
-            for status in ("ok", "partial", "error")
-        },
+        "input": str(args.input), "input_sha256": sha256_file(args.input),
+        "output": str(args.output), "rows": len(rows), "batch_size": args.batch_size,
+        "kisc": outputs["kisc"]["metadata"], "qband": outputs["qband"]["metadata"],
+        "status_counts": {status: sum(row["prediction_status"] == status for row in rows)
+                          for status in ("ok", "partial", "error")},
         "qband_outside_training_range_count": sum(
             row["qband_outside_training_range"] is True for row in rows
         ),
     }
     args.output.with_suffix(".json").write_text(
-        json.dumps(metadata, ensure_ascii=False, indent=2),
-        encoding="utf-8",
+        json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8",
     )
     print(f"Saved: {args.output}")
     print(f"Status counts: {metadata['status_counts']}")
